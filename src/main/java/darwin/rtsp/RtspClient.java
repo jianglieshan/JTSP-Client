@@ -3,8 +3,10 @@ package darwin.rtsp;
 import darwin.base.TcpClient;
 import darwin.base.UDPServer;
 import darwin.channel.RtspInboundChannel;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.handler.codec.string.StringDecoder;
@@ -14,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.ref.WeakReference;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -27,21 +30,30 @@ public class RtspClient implements RtspDirectives {
     private final String address;
     private final String ip;
     private final int port;
+    private final String account;
+    private final String password;
+
+
     private int cSeq;
     private TcpClient tcpClient;
     private UDPServer rtpReceiver;
     private UDPServer rtcpReceiver;
     private Map<Integer, RtspDirectiveEnum> statusMap = new HashMap<>();
     private volatile String sessionId;
+    private String authorization;
 
-    public RtspClient(String ip, int port, String address) {
+    public RtspClient(String ip, int port, String address, String account, String password) {
         this.address = address;
         this.ip = ip;
         this.port = port;
         this.cSeq = 0;
+        this.account = account;
+        this.password = password;
     }
 
     public void start() {
+        generateAuthorization();
+
         tcpClient = new TcpClient(ip, port) {
             @Override
             protected void initChannel(SocketChannel channel) {
@@ -54,6 +66,12 @@ public class RtspClient implements RtspDirectives {
         tcpClient.start();
     }
 
+    private void generateAuthorization() {
+        if (account != null && password != null) {
+            this.authorization = "Basic " + Base64.getEncoder().encodeToString((account + ":" + password).getBytes());
+        }
+    }
+
     @Override
     public void options() {
         sendRequest(RtspDirectiveEnum.OPTIONS, null);
@@ -61,12 +79,13 @@ public class RtspClient implements RtspDirectives {
 
     @Override
     public void describe() {
-        sendRequest(RtspDirectiveEnum.DESCRIBE, null);
+        sendRequest(RtspDirectiveEnum.DESCRIBE, () -> "Accept: application/sdp");
     }
 
     @Override
     public void setup() {
-        sendRequest(RtspDirectiveEnum.SETUP, () -> String.format("Transport: RTP/UDP; client_port=%d-%d", RtspProtocolConst.RTP_RCV_PORT, RtspProtocolConst.RTP_RCV_PORT + 1));
+        sendRequest(RtspDirectiveEnum.SETUP, () -> String.format("Transport: RTP/UDP; client_port=%d-%d", RtspProtocolConst.RTP_RCV_PORT, RtspProtocolConst.RTP_RCV_PORT + 1
+        ), this.address + "/trackID=2");
     }
 
     @Override
@@ -108,26 +127,36 @@ public class RtspClient implements RtspDirectives {
     public void redirect() {
     }
 
-    private void sendRequest(RtspDirectiveEnum directive, Supplier<String> supplier) {
+    private void sendRequest(RtspDirectiveEnum directive, Supplier<String> custom) {
+        sendRequest(directive, custom, null);
+    }
+
+    private void sendRequest(RtspDirectiveEnum directive, Supplier<String> custom, String address) {
         this.cSeq += 1;
         statusMap.put(this.cSeq, directive);
         StringBuilder builder = new StringBuilder();
         builder.append(directive.name())
                 .append(StringUtil.SPACE)
-                .append(this.address)
+                .append(address == null ? this.address : address)
                 .append(StringUtil.SPACE)
                 .append(RtspProtocolConst.VERSION)
                 .append(StringUtil.NEWLINE)
                 .append(RtspProtocolConst.C_SEQ)
                 .append(this.cSeq)
                 .append(StringUtil.NEWLINE);
+        if (authorization != null) {
+            builder.append("Authorization: ")
+                    .append(authorization)
+                    .append(StringUtil.NEWLINE);
+        }
+
         if (sessionId != null) {
             builder.append("Session: ")
                     .append(sessionId)
                     .append(StringUtil.NEWLINE);
         }
-        if (supplier != null) {
-            builder.append(supplier.get());
+        if (custom != null) {
+            builder.append(custom.get());
             builder.append(StringUtil.NEWLINE);
         }
         LOGGER.debug("send content ->{}", builder);
@@ -159,11 +188,13 @@ public class RtspClient implements RtspDirectives {
         UDPServer server = new UDPServer() {
             @Override
             protected void initChannel(NioDatagramChannel ch) {
-                ch.pipeline().addLast(new ChannelInboundHandlerAdapter() {
+                ch.pipeline().addLast(new SimpleChannelInboundHandler<DatagramPacket>() {
                     @Override
-                    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-                        LOGGER.debug("receive -> {}", msg);
-                        super.channelRead(ctx, msg);
+                    protected void channelRead0(ChannelHandlerContext ctx, DatagramPacket msg) throws Exception {
+                        ByteBuf buf = msg.content();
+                        byte[] bytes = new byte[buf.readableBytes()];
+                        buf.readBytes(bytes);
+                        LOGGER.debug("receive -> {}", bytes);
                     }
                 });
             }
