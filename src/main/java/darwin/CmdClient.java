@@ -14,7 +14,7 @@ public class CmdClient {
     }
 
     public static void main(String[] args) {
-//        CmdClient cmdClient = new CmdClient("192.168.1.166", 7550, "rtsp://192.168.1.166:7550/1");
+//        CmdClient cmdClient = new CmdClient("192.168.1.166", 7550, "rtsp://192.168.1.166:7550/1",null,null);
         CmdClient cmdClient = new CmdClient("192.168.1.243", 554, "rtsp://192.168.1.243:554/1/medium", "admin", "admin");
         cmdClient.start();
     }

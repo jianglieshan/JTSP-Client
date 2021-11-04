@@ -3,12 +3,8 @@ package darwin.rtsp;
 import darwin.base.TcpClient;
 import darwin.base.UDPServer;
 import darwin.channel.RtspInboundChannel;
-import io.netty.buffer.ByteBuf;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.channel.socket.DatagramPacket;
+import darwin.rtp.RTPReceiver;
 import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.handler.codec.string.StringDecoder;
 import io.netty.handler.codec.string.StringEncoder;
 import io.netty.util.internal.StringUtil;
@@ -84,7 +80,7 @@ public class RtspClient implements RtspDirectives {
 
     @Override
     public void setup() {
-        sendRequest(RtspDirectiveEnum.SETUP, () -> String.format("Transport: RTP/UDP; client_port=%d-%d", RtspProtocolConst.RTP_RCV_PORT, RtspProtocolConst.RTP_RCV_PORT + 1
+        sendRequest(RtspDirectiveEnum.SETUP, () -> String.format("Agent: JZ\nTransport: RTP/UDP; client_port=%d-%d", RtspProtocolConst.RTP_RCV_PORT, RtspProtocolConst.RTP_RCV_PORT + 1
         ), this.address + "/trackID=2");
     }
 
@@ -140,24 +136,24 @@ public class RtspClient implements RtspDirectives {
                 .append(address == null ? this.address : address)
                 .append(StringUtil.SPACE)
                 .append(RtspProtocolConst.VERSION)
-                .append(StringUtil.NEWLINE)
+                .append(CharConst.NEWLINE)
                 .append(RtspProtocolConst.C_SEQ)
                 .append(this.cSeq)
-                .append(StringUtil.NEWLINE);
+                .append(CharConst.NEWLINE);
         if (authorization != null) {
             builder.append("Authorization: ")
                     .append(authorization)
-                    .append(StringUtil.NEWLINE);
+                    .append(CharConst.NEWLINE);
         }
 
         if (sessionId != null) {
             builder.append("Session: ")
                     .append(sessionId)
-                    .append(StringUtil.NEWLINE);
+                    .append(CharConst.NEWLINE);
         }
         if (custom != null) {
             builder.append(custom.get());
-            builder.append(StringUtil.NEWLINE);
+            builder.append(CharConst.NEWLINE);
         }
         LOGGER.debug("send content ->{}", builder);
         this.tcpClient.send(builder.toString());
@@ -185,24 +181,11 @@ public class RtspClient implements RtspDirectives {
     }
 
     private UDPServer startUdpServer(int port) {
-        UDPServer server = new UDPServer() {
-            @Override
-            protected void initChannel(NioDatagramChannel ch) {
-                ch.pipeline().addLast(new SimpleChannelInboundHandler<DatagramPacket>() {
-                    @Override
-                    protected void channelRead0(ChannelHandlerContext ctx, DatagramPacket msg) throws Exception {
-                        ByteBuf buf = msg.content();
-                        byte[] bytes = new byte[buf.readableBytes()];
-                        buf.readBytes(bytes);
-                        LOGGER.debug("receive -> {}", bytes);
-                    }
-                });
-            }
-        };
+        UDPServer server = new RTPReceiver();
         try {
             server.start(port);
         } catch (Exception exception) {
-            LOGGER.error("rtp receiver start errror ", exception);
+            LOGGER.error("receiver start error ", exception);
         }
         return server;
     }

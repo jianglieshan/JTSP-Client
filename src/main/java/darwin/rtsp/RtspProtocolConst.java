@@ -11,10 +11,9 @@ public class RtspProtocolConst {
     public static final String C_SEQ = "CSeq: ";
     public static final String OPTIONS_CONTENT = "Require: implicit-play" + StringUtil.NEWLINE + "Proxy-Require: gzipped-messages";
     public static final String SUCCESS_RESPONSE = "RTSP/1.0 200 OK";
-    public static final int RTP_RCV_PORT = 25002;
+    public static final int RTP_RCV_PORT = 65200;
 
     private RtspProtocolConst() {
-
     }
 
 }
