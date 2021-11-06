@@ -25,7 +25,10 @@ public class RTPReceiver extends UDPServer {
                 byte[] bytes = new byte[buf.readableBytes()];
                 buf.readBytes(bytes);
                 RTPpacket rtPpacket = new RTPpacket(bytes);
-                LOGGER.debug("receive data-> {}", rtPpacket);
+                RtpParser.H264PacketRecombine(rtPpacket.getPayload(), rtPpacket.getPayload().length);
+                LOGGER.debug("receive raw data -> {}", rtPpacket);
+                LOGGER.debug("NAL unit count -> {}", RtpParser.frames.size());
+//                LOGGER.debug("receive data-> {}", rtPpacket);
             }
         });
     }

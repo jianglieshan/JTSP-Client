@@ -3,6 +3,21 @@ package darwin.rtp;
 /**
  * @author jiangzheng
  * @since 2021/11/4 20:57
+ * <p>
+ * 0 1 2 3
+ * 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ * ++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+- ++-+-+-+-+-+-+-+
+ * |V=2|P|X| 抄送 |M| PT | 序号 |
+ * ++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+- ++-+-+-+-+-+-+-+
+ * | 时间戳 |
+ * ++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+- ++-+-+-+-+-+-+-+
+ * | 同步源 (SSRC) 标识符 |
+ * +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= +=+=+=+=+=+=+=+
+ * | 贡献来源 (CSRC) 标识符 |
+ * | .... |
+ * ++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+- ++-+-+-+-+-+-+-+
+ * <p>
+ * https://datatracker.ietf.org/doc/html/rfc6184#section-5.1
  */
 public class RTPpacket {
 
@@ -32,11 +47,12 @@ public class RTPpacket {
     private int nri;
     private int type;
 
-    private int s;
-    private int e;
-    private int r;
-    private int fuType;
-
+    /**
+     * 如果时10，表示时一帧数据的开头部分；
+     * 如果是00，表示一帧数据的中间部分，有可能多个00的分片；
+     * 如果是01，表示一帧数据的结尾。
+     */
+    private int start;
 
     public RTPpacket(byte[] packet) {
 //fill default fields:
@@ -70,23 +86,32 @@ public class RTPpacket {
             timeStamp = (header[7] & 0xFF) + ((header[6] & 0xFF) << 8) + ((header[5] & 0xFF) << 16) + ((header[4] & 0xFF) << 24);
 
             byte naluHeader = payload[0];
-            f = naluHeader >> 7;
-            nri = (naluHeader >> 5) & 0x3;
+            f = (naluHeader & 0x80) >> 7;
+            nri = (naluHeader & 0x60) >> 5;
             type = naluHeader & 0x1F;
-            if (type == 28) {
-                byte fuHeader = payload[1];
-                s = fuHeader >> 7;
-                e = (fuHeader >> 6) & 0x01;
-                r = (fuHeader >> 5) & 0x01;
-                fuType = fuHeader & 0x1F;
+            switch (type) {
+                case 28: {
+                    byte fuHeader = payload[1];
+                    start = (fuHeader & 0xC0) >> 6;
+                    r = (fuHeader & 0x1F);
+                    fuType = fuHeader & 0x1F;
+                }
+                default:
 
             }
 
         }
     }
 
+    private int r;
+    private int fuType;
+
+    public byte[] getPayload() {
+        return payload;
+    }
+
     @Override
     public String toString() {
-        return String.format("f->%d nri->%d type->%d s->%d e->%d r->%d fuType->%d", f, nri, type, s, e, r, fuType);
+        return String.format("f->%d nri->%d type->%d\r\n start->%d r->%d fuType->%d\r\n timeStamp->%d seq->%d", f, nri, type, start, r, fuType, timeStamp, sequenceNumber);
     }
 }
